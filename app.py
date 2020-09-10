@@ -96,14 +96,14 @@ def preview_image():
         return middleware.build_preflight_response()
     elif request.method == 'POST': 
         email = request.form['email']
-        print(email)
+        # print(email)
         if email is None:
             response = make_response()
             response.status_code = 401
             return middleware.build_actual_response(response)
 
         file = request.files['image']
-        file_location = handle_facial_recognition(file, email)
+        file_location = handle_facial_recognition_dnn(file, email)
         # file_location = add_effect_to_image(file, email)
         return middleware.build_actual_response(send_file(file_location, mimetype='image/png'))
     return 'This should not be hit?'
@@ -185,7 +185,59 @@ def make_image_circular(file):
     np_image = np.dstack((np_image, np_alpha))
     return np_image
 
-def handle_facial_recognition(file, email):
+# TODO: coalesce these two similar functions into one single function
+def handle_facial_recognition_dnn(file, email):
+    today = handle_directory_for_day()
+    if today is False:
+        return 'error creating storage for this image'
+
+    # Create the path we're saving this at. While this could be more concise, readability is a solid trump
+    image_name = file.filename.split('.')[0]
+    file_name = f'{image_name}.png'
+    # file_path = os.path.join(today, file_name)
+
+    image_name = file.filename.split('.')[0]
+    file_name = f'{image_name}_face_rec.png'
+    file_path = os.path.join(today, file_name)
+
+    img = Image.open(file).convert("RGB")
+    np_image = np.array(img)
+
+    # Image.fromarray(np_image).save(file_path)
+    modelFile = "res10_300x300_ssd_iter_140000.caffemodel"
+    configFile = "deploy.prototxt.txt"
+    net = cv2.dnn.readNetFromCaffe(configFile, modelFile)
+    img = cv2.cvtColor(np_image, cv2.COLOR_RGB2BGR)
+    h, w = img.shape[:2]
+    blob = cv2.dnn.blobFromImage(cv2.resize(img, (300, 300)), 1.0,
+    (300, 300), (104.0, 117.0, 123.0))
+    net.setInput(blob)
+    faces = net.forward()
+    #to draw faces on image
+    print(faces.shape[2])
+    # A boolean flag to direct us if there are no faces present in the image
+    no_faces = True
+    image = Image.fromarray(np_image)
+    for i in range(faces.shape[2]):
+            confidence = faces[0, 0, i, 2]
+            # print(confidence)
+            if confidence > 0.25:
+                no_faces = False
+                box = faces[0, 0, i, 3:7] * np.array([w, h, w, h])
+                (x, y, x1, y1) = box.astype("int")
+                face = image.convert("RGBA").crop((x, y, x1, y1))
+                # face.show()
+                sparkly_face = perform_alpha_composite(face, "effects/sparkles.png")
+                image.paste(sparkly_face, (x, y))
+                # cv2.rectangle(img, (x, y), (x1, y1), (0, 0, 255), 2)
+    
+    if no_faces:
+        return add_sparkles_to_whole_image(img, file_path)
+
+    image.convert("RGBA").save(file_path)
+    return file_path
+
+def handle_facial_recognition_haar(file, email):
     today = handle_directory_for_day()
     if today is False:
         return 'error creating storage for this image'
@@ -208,30 +260,57 @@ def handle_facial_recognition(file, email):
     face_cascade = cv2.CascadeClassifier(casc_path)
     # image = cv2.imread(file_path)
     image = cv2.cvtColor(np_image, cv2.COLOR_RGB2BGR)
-    # 
+    # TODO: find some way to retain the color
     gray = cv2.cvtColor(image, cv2.COLOR_BGR2GRAY)
 
     # Detect faces in the image
     faces = face_cascade.detectMultiScale(
         gray,
-        scaleFactor=1.1,
+        scaleFactor=1.3,
         minNeighbors=5,
         minSize=(30, 30),
         flags=cv2.CASCADE_SCALE_IMAGE
     )
-    print("Found {0} faces!".format(len(faces)))
-
-    # Draw a rectangle around the faces
-    for (x, y, w, h) in faces:
-        cv2.rectangle(image, (x, y), (x+w, y+h), (0, 255, 0), 2)
-    # print(type(image))
-    # cv2.imshow("Faces found", image)
-    # cv2.waitKey(0)
+    print(type(faces))
+    # TODO: error handling; roll me back if the image save fails
     if os.path.exists(file_path) is False:
         record_saved_image_location(file_name, today, email)
+    # If there are no faces, add sparkles to everything
+    if len(faces) < 1:
+        return add_sparkles_to_whole_image(image, file_path)
+    else:
+        # Draw a rectangle around the faces
+        print(f'detected {len(faces)} faces')
+        # The image on which we do detection has its colors pretty dramatically changed. We don't want this, so use the original
+        image = Image.fromarray(np_image)
+        for (x, y, w, h) in faces:
+            face = image.convert("RGBA").crop((x, y, x+w, y+h))
+            sparkly_face = perform_alpha_composite(face, "effects/sparkles.png")
+            image.paste(sparkly_face, (x, y))
+            
+            # image.show()
+        image.convert("RGBA").save(file_path)
+            # image
 
-    Image.fromarray(image).save(file_path)
+            # cv2.rectangle(image, (x, y), (x+w, y+h), (0, 255, 0), 2)
+    # Image.fromarray(image).save(file_path)
     # image.save(file_path, "PNG")
+    return file_path
+
+def perform_alpha_composite(layer1, file):
+    layer2 = Image.open(file).resize(layer1.size)
+    # print(f'layer 1: {layer1.size} layer 2: {layer2.size}')
+    final2 = Image.new("RGBA", layer1.size)
+    final2 = Image.alpha_composite(final2, layer1)
+    final2 = Image.alpha_composite(final2, layer2)
+    return final2
+
+def add_sparkles_to_whole_image(image, file_path):
+    # print('no faces found, add sparkles')
+    layer1 = Image.fromarray(image).convert("RGBA")
+    final2 = perform_alpha_composite(layer1, "effects/sparkles.png") 
+    print(type(final2))
+    final2.save(file_path)
     return file_path
 
 
