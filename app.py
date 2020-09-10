@@ -9,55 +9,14 @@ from flask_sqlalchemy import SQLAlchemy
 from flask_migrate import Migrate
 import base64
 import functools
+import cv2
 
+
+# imports from files in this project
 import middleware
 
 
 app = Flask(__name__)
-
-# oauth = OAuth(app)
-
-# # TODO: login in its own file
-# auth0 = oauth.register(
-#     'auth0',
-#     client_id='qt7n6UnMAwIUvN0bFaxkCAPiNFbqXNPQ',
-#     client_secret='YOUR_CLIENT_SECRET',
-#     api_base_url='https://dev-ogr-2kjg.us.auth0.com',
-#     access_token_url='https://dev-ogr-2kjg.us.auth0.com/oauth/token',
-#     authorize_url='https://dev-ogr-2kjg.us.auth0.com/authorize',
-#     client_kwargs={
-#         'scope': 'openid profile email',
-#     },
-# )
-
-# Here we're using the /callback route.
-# @app.route('/callback')
-# def callback_handling():
-#     # Handles response from token endpoint
-#     auth0.authorize_access_token()
-#     resp = auth0.get('userinfo')
-#     userinfo = resp.json()
-
-#     # Store the user information in flask session.
-#     session['jwt_payload'] = userinfo
-#     session['profile'] = {
-#         'user_id': userinfo['sub'],
-#         'name': userinfo['name'],
-#         'picture': userinfo['picture']
-#     }
-#     return redirect('/dashboard')
-
-# @app.route('/login')
-# def login():
-#     return auth0.authorize_redirect(redirect_uri='YOUR_CALLBACK_URL')
-
-# @app.route('/logout')
-# def logout():
-#     # Clear session stored data
-#     session.clear()
-#     # Redirect user to logout endpoint
-#     params = {'returnTo': url_for('home', _external=True), 'client_id': 'qt7n6UnMAwIUvN0bFaxkCAPiNFbqXNPQ'}
-#     return redirect(auth0.api_base_url + '/v2/logout?' + urlencode(params))
 
 # TODO: db initialization and access into discrete file
 POSTGRES = {
@@ -143,8 +102,9 @@ def preview_image():
             response.status_code = 401
             return middleware.build_actual_response(response)
 
-        file = request.files['image'] 
-        file_location = add_effect_to_image(file, email)
+        file = request.files['image']
+        file_location = handle_facial_recognition(file, email)
+        # file_location = add_effect_to_image(file, email)
         return middleware.build_actual_response(send_file(file_location, mimetype='image/png'))
     return 'This should not be hit?'
 
@@ -192,7 +152,7 @@ def add_effect_to_image(file, email):
 
     # Create the path we're saving this at. While this could be more concise, readability is a solid trump
     image_name = file.filename.split('.')[0]
-    file_name = f'{image_name}.png'
+    file_name = f'{image_name}_circular.png'
     file_path = os.path.join(today, file_name)
 
     if os.path.exists(file_path) is False:
@@ -210,8 +170,8 @@ def record_saved_image_location(file_name, file_path, creator_email):
 # Methods for image manipulation also likely belong in their own home
 def make_image_circular(file):
     img = Image.open(file).convert("RGB")
-    npImage = np.array(img)
-    h,w = img.size
+    np_image = np.array(img)
+    h, w = img.size
 
     # Create same size alpha layer with circle
     alpha = Image.new('L', img.size,0)
@@ -219,11 +179,60 @@ def make_image_circular(file):
     draw.pieslice([0,0,h,w],0,360,fill=255)
 
     # Convert alpha Image to numpy array
-    npAlpha = np.array(alpha)
+    np_alpha = np.array(alpha)
 
     # Add alpha layer to RGB
-    npImage = np.dstack((npImage,npAlpha))
-    return npImage
+    np_image = np.dstack((np_image, np_alpha))
+    return np_image
+
+def handle_facial_recognition(file, email):
+    today = handle_directory_for_day()
+    if today is False:
+        return 'error creating storage for this image'
+
+    # Create the path we're saving this at. While this could be more concise, readability is a solid trump
+    image_name = file.filename.split('.')[0]
+    file_name = f'{image_name}.png'
+    # file_path = os.path.join(today, file_name)
+
+    image_name = file.filename.split('.')[0]
+    file_name = f'{image_name}_face_rec.png'
+    file_path = os.path.join(today, file_name)
+
+    img = Image.open(file).convert("RGB")
+    np_image = np.array(img)
+
+    # Image.fromarray(np_image).save(file_path)
+
+    casc_path = 'haarcascade_frontalface_default.xml'
+    face_cascade = cv2.CascadeClassifier(casc_path)
+    # image = cv2.imread(file_path)
+    image = cv2.cvtColor(np_image, cv2.COLOR_RGB2BGR)
+    # 
+    gray = cv2.cvtColor(image, cv2.COLOR_BGR2GRAY)
+
+    # Detect faces in the image
+    faces = face_cascade.detectMultiScale(
+        gray,
+        scaleFactor=1.1,
+        minNeighbors=5,
+        minSize=(30, 30),
+        flags=cv2.CASCADE_SCALE_IMAGE
+    )
+    print("Found {0} faces!".format(len(faces)))
+
+    # Draw a rectangle around the faces
+    for (x, y, w, h) in faces:
+        cv2.rectangle(image, (x, y), (x+w, y+h), (0, 255, 0), 2)
+    # print(type(image))
+    # cv2.imshow("Faces found", image)
+    # cv2.waitKey(0)
+    if os.path.exists(file_path) is False:
+        record_saved_image_location(file_name, today, email)
+
+    Image.fromarray(image).save(file_path)
+    # image.save(file_path, "PNG")
+    return file_path
 
 
 # Helper function which displays file fields to viewer
