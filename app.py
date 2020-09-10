@@ -77,14 +77,6 @@ app.config['SQLALCHEMY_DATABASE_URI'] = 'postgresql://%(user)s:\
 db = SQLAlchemy(app)
 migrate = Migrate(app, db)
 
-# class UsersModel(db.Model):
-#     """Model for the users table"""
-#     __tablename__ = 'users'
-#     id = db.Column(db.Integer, primary_key = True)
-#     name = db.Column(db.String())
-#     pass_phrase = db.Column(db.String())
-#     created_date = db.Column(db.DateTime, default=datetime.utcnow)
-
 class ImageModel(db.Model):
     """Model for the images table"""
     __tablename__ = 'images'
@@ -126,6 +118,7 @@ def get_image(id):
     try:
         file_location = os.path.join(result.file_path, result.file_name)
     except TypeError:
+        print('type error in building file path')
         return middleware.build_actual_response(jsonify('no data'))
     
     response = send_file(file_location, mimetype='image/png')
@@ -144,7 +137,7 @@ def preview_image():
         return middleware.build_preflight_response()
     elif request.method == 'POST': 
         email = request.form['email']
-        print(f'email in preview image {email}')
+        print(email)
         if email is None:
             response = make_response()
             response.status_code = 401
@@ -154,6 +147,30 @@ def preview_image():
         file_location = add_effect_to_image(file, email)
         return middleware.build_actual_response(send_file(file_location, mimetype='image/png'))
     return 'This should not be hit?'
+
+# TODO: add auth0 authentication. Pretty minor, but would be better than the pseudo-authentication I'm currently doing
+@app.route("/get-my-image-data/<username>", methods=["GET"])
+def get_my_image_data(username):
+    # print('hallo weld')
+    if username is None:
+        return 'this endpoint needs an email'
+    # for some reason, the baseQuery object recovered by the filter does not mesh with standard iterable operations
+    user_images = [i for i in ImageModel.query.filter(ImageModel.creator_email == username)]
+    if len(user_images) < 1:
+        # in this case, the user has not added filters to any images
+        return middleware.build_actual_response({[]})
+    start_image = user_images[0]
+    # TODO: Essentially identical to get_image, should thus be encapsulated
+    file_location = os.path.join(start_image.file_path, start_image.file_name)
+    user_image_ids = [str(image.id) for image in user_images]
+    print(user_image_ids)
+    response = send_file(file_location, mimetype='image/png')
+    response.headers.add("Access-Control-Expose-Headers", "user_image_id_list,image_name,image_id")
+    # going to transmit the user IDs to the client as a comma separated list
+    response.headers['user_image_id_list'] = ",".join(user_image_ids)
+    response.headers['image_name'] = start_image.file_name
+    response.headers['image_id'] = start_image.id
+    return middleware.build_actual_response(response)
 
 def handle_directory_for_day():
     # today = str(datetime.date(datetime.datetime.now()))

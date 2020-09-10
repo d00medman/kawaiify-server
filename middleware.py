@@ -106,6 +106,8 @@ def requires_scope(required_scope):
 
 """
 All code above this point was more or less directly lifted from the auth0 quickstart
+
+TODO: given the fundamentally janky nature of my use of this, might not be needed.
 """
 
 # middleware methods for access control; will probably want these in their own file
