@@ -7,15 +7,17 @@ import cv2
 
 import middleware
 
+STORAGE_DIRECTORY = 'user-images'
+
 # The nexus method which will apply all desired effects to the image
-def add_effects_to_image(file, effects):
+def add_effects_to_image(file, effects, username):
     """
     A few improvements
     TODO: maybe make the effect list indexed, to allow the user to determine the order in which they're applied?
     TODO: if haar and dnn are both run, will produce some weird overlap. Should probably (at least with eyes) make these mutually exclusive 
     """
     # print(effects)
-    file_path, pil_image, np_image = add_effect_setup_and_data(file, effects)
+    file_path, file_name, pil_image, np_image = add_effect_setup_and_data(file, effects, username)
     # 
     if 'haar_sparkle' or 'haar_googly' in effects:
         sparkly = 'haar_sparkle' in effects
@@ -30,7 +32,7 @@ def add_effects_to_image(file, effects):
 
     pil_image.save(file_path)
     # Image.fromarray(changed_image).save(file_path)
-    return file_path
+    return file_path, file_name
 
 def handle_directory_for_day():
     today = str(date.today())
@@ -43,22 +45,18 @@ def handle_directory_for_day():
     return today
 
 # Performs the initial setup of directories for storing images and returns the different representations needed to add the effects
-def add_effect_setup_and_data(file, effects):
-    today = handle_directory_for_day()
-    if today is False:
-        return middleware.handle_response(500)
-
+def add_effect_setup_and_data(file, effects, username):
     # Create the path we're saving this at. While this could be more concise, readability is a solid trump
     image_name = file.filename.split('.')[0]
     effect_list = '-'.join(effects)
-    file_name = f'{image_name}_{effect_list}.png'
-    file_path = os.path.join(today, file_name)
+    file_name = f'{image_name}_{effect_list}_{username}.png'
+    file_path = os.path.join(STORAGE_DIRECTORY, file_name)
 
     # PIL: Python Imaging Library, the library which actually changes the file passed in
     pil_image = Image.open(file).convert("RGB")
     # NP: numpy, a representation which acts as a go-between for PIL and OpenCV
     np_image = np.array(pil_image)
-    return file_path, pil_image, np_image
+    return file_path, file_name, pil_image, np_image
 
 def handle_facial_recognition_dnn(np_image, sparkly_face=False, anime_eyes=False):
     print('dnn')
@@ -148,11 +146,11 @@ def handle_facial_recognition_haar(np_image, sparkly_face=False, anime_eyes=Fals
 def perform_alpha_composite(layer1, file):
     layer2 = Image.open(file).resize(layer1.size)
     # layer2.show()
-    print(f'layer 1 size: {layer1.size}, layer 2 size: {layer2.size}')
+    # print(f'layer 1 size: {layer1.size}, layer 2 size: {layer2.size}')
     final2 = Image.new("RGBA", layer1.size)
     final2 = Image.alpha_composite(final2, layer1)
     # final2.show()
-    print(f'final2 size: {final2.size}, layer 2 size: {layer2.size} final2 mode: {final2.mode}, layer 2 mode: {layer2.mode}')
+    # print(f'final2 size: {final2.size}, layer 2 size: {layer2.size} final2 mode: {final2.mode}, layer 2 mode: {layer2.mode}')
     final2 = Image.alpha_composite(final2, layer2)
     return final2
 
