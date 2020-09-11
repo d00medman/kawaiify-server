@@ -9,12 +9,22 @@ import middleware
 
 # The nexus method which will apply all desired effects to the image
 def add_effects_to_image(file, effects):
+    """
+    A few improvements
+    TODO: maybe make the effect list indexed, to allow the user to determine the order in which they're applied?
+    TODO: if haar and dnn are both run, will produce some weird overlap. Should probably (at least with eyes) make these mutually exclusive 
+    """
+    # print(effects)
     file_path, pil_image, np_image = add_effect_setup_and_data(file, effects)
-    # TODO: maybe make the list indexed, to allow the user to determine the order in which they're applied?
-    if 'haar_sparkle' in effects:
-        pil_image, np_image = handle_facial_recognition_haar(np_image)
-    if 'dnn_sparkle' in effects:
-        pil_image, np_image = handle_facial_recognition_dnn(np_image)
+    # 
+    if 'haar_sparkle' or 'haar_googly' in effects:
+        sparkly = 'haar_sparkle' in effects
+        googly = 'haar_googly' in effects
+        pil_image, np_image = handle_facial_recognition_haar(np_image, sparkly, googly)
+    if 'dnn_sparkle' or 'dnn_googly' in effects:
+        sparkly = 'dnn_sparkle' in effects
+        googly = 'dnn_googly' in effects
+        pil_image, np_image = handle_facial_recognition_dnn(np_image, sparkly, googly)
     if 'circle' in effects:
         pil_image, np_image = make_image_circular(pil_image.convert("RGB"))
 
@@ -50,7 +60,8 @@ def add_effect_setup_and_data(file, effects):
     np_image = np.array(pil_image)
     return file_path, pil_image, np_image
 
-def handle_facial_recognition_dnn(np_image):
+def handle_facial_recognition_dnn(np_image, sparkly_face=False, anime_eyes=False):
+    print('dnn')
     model_file = "res10_300x300_ssd_iter_140000.caffemodel"
     config_file = "deploy.prototxt.txt"
     net = cv2.dnn.readNetFromCaffe(config_file, model_file)
@@ -65,19 +76,28 @@ def handle_facial_recognition_dnn(np_image):
     net.setInput(blob)
     faces = net.forward()
     #to draw faces on image
-    print(faces.shape[2])
+    
     # A boolean flag to direct us if there are no faces present in the image
     no_faces_in_image = True
     image = Image.fromarray(np_image)
     for i in range(faces.shape[2]):
-            confidence = faces[0, 0, i, 2]
-            if confidence > 0.25:
-                no_faces_in_image = False
+        confidence = faces[0, 0, i, 2]
+        if confidence > 0.25:
+            no_faces_in_image = False
+            
+            if sparkly_face:
                 box = faces[0, 0, i, 3:7] * np.array([width, height, width, height])
                 (x, y, x1, y1) = box.astype("int")
                 face = image.convert("RGBA").crop((x, y, x1, y1))
                 sparkly_face = perform_alpha_composite(face, "effects/sparkles.png")
                 image.paste(sparkly_face, (x, y))
+            if anime_eyes:
+                box = faces[0, 0, i, 3:7] * np.array([width, height, width, height])
+                (x, y, x1, y1) = box.astype("int")
+                # eyes are about 3/4 of the way up the face, so we target the top 1/4 of the face
+                face = image.convert("RGBA").crop((x, y, x1, y1 * 0.75))
+                googly_face = perform_alpha_composite(face, "effects/anime_eyes_2.png")
+                image.paste(googly_face, (x, y))
     
     if no_faces_in_image:
         return add_sparkles_to_whole_image(np_image)
@@ -85,12 +105,20 @@ def handle_facial_recognition_dnn(np_image):
     pil_image = image.convert("RGBA")
     return pil_image, np.array(pil_image)
 
-def handle_facial_recognition_haar(np_image):
+
+def handle_facial_recognition_haar(np_image, sparkly_face=False, anime_eyes=False):
+    """
+    I implemented haar first, then found from my research that haar is outdated and I'd be better suited using DNN, That said, I'm pretty loathe to take out
+    more or less good code, so I'm calling the methods which use haar 'less accurate' on the front and calling it a day
+    """
+    # print('haar')
     casc_path = 'haarcascade_frontalface_default.xml'
     face_cascade = cv2.CascadeClassifier(casc_path)
-    image = cv2.cvtColor(np_image, cv2.COLOR_RGB2BGR)
-    gray = cv2.cvtColor(image, cv2.COLOR_BGR2GRAY)
+    img = cv2.cvtColor(np_image, cv2.COLOR_RGB2BGR)
+    gray = cv2.cvtColor(img, cv2.COLOR_BGR2GRAY)
     # Detect faces in the image
+
+    # TODO: one potential improvement here would be to iterate on scale factors. Could have the knock on of doubling (to n) up on faces though, An interesting problem, but probably not worth dealing with at the moment
     faces = face_cascade.detectMultiScale(
         gray,
         scaleFactor=1.3,
@@ -99,22 +127,32 @@ def handle_facial_recognition_haar(np_image):
         flags=cv2.CASCADE_SCALE_IMAGE
     )
     if len(faces) < 1:
-        return add_sparkles_to_whole_image(image)
-    else:
-        # The image on which we do detection has its palatte pretty dramatically changed. We don't want this, so use the original
-        image = Image.fromarray(np_image)
-        for (x, y, w, h) in faces:
-            face = image.convert("RGBA").crop((x, y, x+w, y+h))
+        return add_sparkles_to_whole_image(np_image)
+    
+    # The image on which we do detection has its palatte pretty dramatically changed. We don't want this, so use the original
+    image = Image.fromarray(np_image)
+    for (x, y, width, height) in faces:
+        if sparkly_face:
+            face = image.convert("RGBA").crop((x, y, x+width, y+height))
             sparkly_face = perform_alpha_composite(face, "effects/sparkles.png")
             image.paste(sparkly_face, (x, y))
+        if anime_eyes:
+            face = image.convert("RGBA").crop((x, y, x+width, y+(height*0.5)))
+            googly_face = perform_alpha_composite(face, "effects/anime_eyes_2.png")
+            image.paste(googly_face, (x, y))
 
     pil_image = image.convert("RGBA")
+    # pil_image.show()
     return pil_image, np.array(pil_image)
 
 def perform_alpha_composite(layer1, file):
     layer2 = Image.open(file).resize(layer1.size)
+    # layer2.show()
+    print(f'layer 1 size: {layer1.size}, layer 2 size: {layer2.size}')
     final2 = Image.new("RGBA", layer1.size)
     final2 = Image.alpha_composite(final2, layer1)
+    # final2.show()
+    print(f'final2 size: {final2.size}, layer 2 size: {layer2.size} final2 mode: {final2.mode}, layer 2 mode: {layer2.mode}')
     final2 = Image.alpha_composite(final2, layer2)
     return final2
 

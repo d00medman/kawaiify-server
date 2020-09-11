@@ -81,21 +81,6 @@ def preview_image():
     file_location = image_manipulation.add_effects_to_image(file, effects)
     # file_location = add_effect_to_image(file, email)
     return middleware.add_cors_response_headers(send_file(file_location, mimetype='image/png'))
-    # if request.method == 'OPTIONS':
-    #     return middleware.build_preflight_response()
-    # if request.method == 'POST': 
-    #     email = request.form['email']
-    #     if email is None:
-    #         return middleware.handle_response(401)
-    #     file = request.files['image']
-    #     effects = request.form['effects'].split(',')
-    #     if len(effects) < 1:
-    #         return middleware.handle_response(406)
-    #     file_location = image_manipulation.add_effects_to_image(file, effects)
-    #     # file_location = add_effect_to_image(file, email)
-    #     return middleware.add_cors_response_headers(send_file(file_location, mimetype='image/png'))
-    # # This realistically should never be hit
-    # return middleware.handle_response(502)
 
 # TODO: add auth0 authentication. Pretty minor, but would be better than the pseudo-authentication I'm currently doing
 @app.route("/get-my-image-data/<username>", methods=["GET"])
