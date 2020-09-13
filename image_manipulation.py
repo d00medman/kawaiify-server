@@ -10,15 +10,15 @@ import middleware
 STORAGE_DIRECTORY = 'user-images'
 
 # The nexus method which will apply all desired effects to the image
-def add_effects_to_image(file, effects, username):
+def add_effects_to_image(file, effects, username, input_filename=None):
     """
     A few improvements
     TODO: maybe make the effect list indexed, to allow the user to determine the order in which they're applied?
     TODO: if haar and dnn are both run, will produce some weird overlap. Should probably (at least with eyes) make these mutually exclusive 
     """
     # print(effects)
-    file_path, file_name, pil_image, np_image = add_effect_setup_and_data(file, effects, username)
-    # 
+    file_path, file_name, pil_image, np_image = add_effect_setup_and_data(file, effects, username, input_filename)
+    
     if 'haar_sparkle' or 'haar_googly' in effects:
         sparkly = 'haar_sparkle' in effects
         googly = 'haar_googly' in effects
@@ -45,9 +45,9 @@ def handle_directory_for_day():
     return today
 
 # Performs the initial setup of directories for storing images and returns the different representations needed to add the effects
-def add_effect_setup_and_data(file, effects, username):
-    # Create the path we're saving this at. While this could be more concise, readability is a solid trump
-    image_name = file.filename.split('.')[0]
+def add_effect_setup_and_data(file, effects, username, image_name=None):
+    if image_name is None:
+        image_name = file.filename.split('.')[0]
     effect_list = '-'.join(effects)
     file_name = f'{image_name}_{effect_list}_{username}.png'
     file_path = os.path.join(STORAGE_DIRECTORY, file_name)

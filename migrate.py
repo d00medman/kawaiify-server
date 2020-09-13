@@ -17,6 +17,7 @@ def create_tables():
         DROP TABLE IF EXISTS images CASCADE;
         CREATE TABLE images (
             id SERIAL PRIMARY KEY,
+            display_name VARCHAR(255) NOT NULL,
             file_name VARCHAR(255) NOT NULL,
             created_at TIMESTAMP DEFAULT NOW(),
             creator_user_id INTEGER REFERENCES users(id),

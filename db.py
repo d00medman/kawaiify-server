@@ -38,13 +38,15 @@ def get_db_connection():
         print(error)
     return conn, cur
 
-def insert_image(file_name, user_email):
+def insert_image(file_name, user_email, display_name):
     """ insert a new image path into the images table """
     sql = """
     INSERT INTO images (
         file_name,
-        user_email
+        user_email,
+        display_name
     ) VALUES (
+        %s,
         %s,
         %s
     )
@@ -54,7 +56,7 @@ def insert_image(file_name, user_email):
     try:
         conn, cur = get_db_connection()
         # execute the INSERT statement
-        cur.execute(sql, (file_name, user_email,))
+        cur.execute(sql, (file_name, user_email, display_name,))
         image_id = cur.fetchone()[0]
         conn.commit()
         cur.close()
@@ -74,12 +76,19 @@ def get_images_for_list(user_email=None):
     try:
         conn, cur = get_db_connection()
         if user_email is None:
-            cur.execute("SELECT id, file_name FROM images WHERE is_reported IS FALSE;")
+            sql = """
+            SELECT
+                id,
+                display_name
+            FROM images
+            WHERE is_reported IS FALSE;
+            """
+            cur.execute(sql)
         else:
             sql = """
             SELECT 
                 id,
-                file_name 
+                display_name 
             FROM images
             WHERE user_email=%s
             AND is_reported IS FALSE;
@@ -105,7 +114,7 @@ def get_image_by_id(image_id):
     file_creator = None
     sql = """
     SELECT
-        file_name,
+        display_name,
         user_email
     FROM images
     WHERE id = %s
