@@ -1,14 +1,8 @@
+import base64
 import os
 
-from flask import Flask, request, send_file
-# TODO: delete me once cors is confirmed stable
-# from flask_cors import CORS, cross_origin
-from datetime import datetime, date
-
-
-from flask_sqlalchemy import SQLAlchemy
-from flask_migrate import Migrate
-import functools
+from flask import Flask, request, send_file, jsonify
+# from datetime import datetime, date
 
 
 # imports from files in this project
@@ -19,58 +13,59 @@ import db
 
 app = Flask(__name__)
 
-# TODO: db initialization and access into discrete file
-# POSTGRES = {
-#     'user': 'postgres',
-#     'pw': 'password',
-#     'db': 'steg',
-#     'host': 'localhost',
-#     'port': '5432',
-# }
 
 app.config['DEBUG'] = True
 
-# Db initialization
-# app.config['SQLALCHEMY_TRACK_MODIFICATIONS'] = False
-# app.config['SQLALCHEMY_DATABASE_URI'] = 'postgresql://%(user)s:\
-# %(pw)s@%(host)s:%(port)s/%(db)s' % POSTGRES
-# db = SQLAlchemy(app)
-# migrate = Migrate(app, db)
+@app.route("/get-all-images", methods=["GET"])
+def get_all_images():
+    image_list = db.get_images_for_list()
+    # TODO: still need to figure out how to get the image tiles to display, keep this in until that is either figured out or the effort is abandoned
+    # for image in image_list:
+    #     file_location = os.path.join(imman.STORAGE_DIRECTORY, image['fileName'])
+    #     with open(file_location, "rb") as image_file:
+    #         # encoded_string = base64.b64encode(image_file.read())
+    #         image['fileData'] = base64.b64encode(image_file.read()).decode()
+    return middleware.add_cors_response_headers(jsonify(image_list))
+
+@app.route("/get-my-image-data/<user_email>", methods=["GET"])
+def get_my_image_data(user_email):
+    print('hits get_my_image_data')
+    # TODO: replace this potemkin village authorization pattern
+    if user_email is None:
+        return middleware.handle_response(401)
+    image_list = db.get_images_for_list(user_email)
+    # for image in image_list:
+    #     file_location = os.path.join(imman.STORAGE_DIRECTORY, image['fileName'])
+    #     with open(file_location, "rb") as image_file:
+    #         # encoded_string = base64.b64encode(image_file.read())
+    #         image['fileData'] = base64.b64encode(image_file.read()).decode()
+    return middleware.add_cors_response_headers(jsonify(image_list))
 
 
 @app.route("/get-image/<image_id>", methods=["GET"])
 def get_image(image_id):
-    print(f'image id in get_image {image_id}')
+    """
+    Recover a single image and its relevant data
+    """
+    # print(f'image id in get_image {image_id}')
     image_id = int(image_id)
-
-    initializing = False
-    if image_id == -1:
-        print('hola mundo')
-        initializing = True
-        image_id, file_name, max_image_id = db.get_all_images_initial_data()
-        header_list = "image_id,image_name,max_image_id"
-    else:
-        file_name = db.get_image_by_id(image_id)
-        header_list = "image_id,image_name"
-
-    try:
-        file_location = os.path.join(imman.STORAGE_DIRECTORY, file_name)
-    except (Exception, TypeError) as exception:
-        print(f'error in building file path in get_image: {exception}')
-        return middleware.handle_response(500)
+    file_name, image_creator = db.get_image_by_id(image_id)
+    file_location = os.path.join(imman.STORAGE_DIRECTORY, file_name)
     
     response = send_file(file_location, mimetype='image/png')
-    response.headers.add("Access-Control-Expose-Headers", header_list)
-    response.headers['image_id'] = image_id
+    response.headers.add("Access-Control-Expose-Headers", "image_name,image_creator")
+    response.headers['image_creator'] = image_creator
     response.headers['image_name'] = file_name
-    if initializing:
-        response.headers['max_image_id'] = max_image_id
     return middleware.add_cors_response_headers(response)
 
 
 # Preview and upload are essentially the same for the moment, need to clarify this terminology
 @app.route("/upload-image", methods=["POST"])
 def upload_image():
+    """
+    Applies all selected effects to the uploaded image, saves said image to both the file system and
+    the database, then returns relevant information to the user for assessment
+    """
     email = request.form['email']
     if email is None:
         return middleware.handle_response(401)
@@ -81,72 +76,42 @@ def upload_image():
     file_location, file_name = imman.add_effects_to_image(file, effects, email)
 
     if os.path.exists(file_location) is True:
-        db.insert_image(file_name, email)
+        image_id = db.insert_image(file_name, email)
+        if image_id is False:
+            return middleware.handle_response(500)
+
+    response = send_file(file_location, mimetype='image/png')
+    response.headers.add("Access-Control-Expose-Headers", "image_id")
+    response.headers['image_id'] = image_id
 
     # file_location = add_effect_to_image(file, email)
-    return middleware.add_cors_response_headers(send_file(file_location, mimetype='image/png'))
-
-# TODO: add auth0 authentication. Pretty minor, but would be better than the pseudo-authentication I'm currently doing
-@app.route("/get-my-image-data/<username>", methods=["GET"])
-def get_my_image_data(username):
-    print('hits get_my_image_data')
-    if username is None:
-        return middleware.handle_response(401)
-    image_id, file_name, user_image_ids = db.get_user_initialization_data(username)
-    # TODO: if this is an artifact, delete this
-    if file_name is None:
-         return middleware.add_cors_response_headers()
-
-    try:
-        file_location = os.path.join(imman.STORAGE_DIRECTORY, file_name)
-    except (Exception, TypeError) as exception:
-        print(f'error in building file path in get_image: {exception}')
-        return middleware.handle_response(500)
-    
-    response = send_file(file_location, mimetype='image/png')
-    response.headers.add("Access-Control-Expose-Headers", "user_image_id_list,image_name,image_id")
-    # going to transmit the user IDs to the client as a comma separated list
-    response.headers['user_image_id_list'] = user_image_ids
-    response.headers['image_name'] = file_name
-    response.headers['image_id'] = image_id
     return middleware.add_cors_response_headers(response)
 
-"""
-DB methods. I'd prefer to have these in a separate file, but the pattern I've selected has made this tricky to do without inducing a circular dependency
-"""
-# class ImageModel(db.Model):
-#     """Model for the images table"""
-#     __tablename__ = 'images'
+@app.route("/delete-my-image-data/<image_id>", methods=["GET"])
+def delete_my_image(image_id):
+    """
+    I am using a get route because once we delete an image, we are going to need to return updated
+    data
+    """
+    image_id = int(image_id)
+    print(image_id)
+    # TODO: this is where we're going to need to check for login to make sure that the user is the right one.
+    file_name = db.delete_image(image_id)
+    if file_name is False:
+        return middleware.handle_response(500)
+    file_location = os.path.join(imman.STORAGE_DIRECTORY, file_name)
+    os.remove(file_location)
+    return middleware.add_cors_response_headers()
 
-#     id = db.Column(db.Integer, primary_key = True)
-#     file_path = db.Column(db.String())
-#     file_name = db.Column(db.String())
-#     creator_email = db.Column(db.String(), index=True)
-#     created_date = db.Column(db.DateTime, default=datetime.utcnow)
+@app.route("/report-image/<image_id>", methods=["GET"])
+def report_image(image_id):
+    """
+    Reports an image, which will not delete the image, but will prevent it from appearing in list
+    requests to the GUI.
 
-#     def __init__(self, file_name, file_path, creator_email):
-#         self.file_name = file_name
-#         self.file_path = file_path
-#         self.creator_email = creator_email
-
-# def get_user_initialization_data(username):
-#     user_images = [i for i in ImageModel.query.filter(ImageModel.creator_email == username)]
-#     if len(user_images) < 1:
-#         # in this case, the user has not added filters to any images. Return false for controller to handle
-#         return False, False
-#     user_image_ids = [str(image.id) for image in user_images]
-#     return user_images[0], ",".join(user_image_ids)
-
-# Store in db for easy usage
-# def record_saved_image_location(file_name, file_path, creator_email):
-#     new_image = ImageModel(file_name=file_name, file_path=file_path, creator_email=creator_email)
-#     db.session.add(new_image)
-#     db.session.commit()
-
-
-# Helper function which displays file fields to viewer
-# TODO: delete me, really just here for my debugging purposes
-def print_file_contents(file):
-    file_dict = file.__dict__
-    for f in file_dict:
-        print(f'{f}: {file_dict[f]}')
+    This is a stub which could be expanded to handle the uploading of obscene content
+    """
+    image_id = int(image_id)
+    if db.report_image(image_id) is False:
+        return middleware.handle_response(500)
+    return middleware.add_cors_response_headers()

@@ -20,7 +20,8 @@ def create_tables():
             file_name VARCHAR(255) NOT NULL,
             created_at TIMESTAMP DEFAULT NOW(),
             creator_user_id INTEGER REFERENCES users(id),
-            user_email VARCHAR(255)
+            user_email VARCHAR(255),
+            is_reported BOOLEAN DEFAULT FALSE
         );
         CREATE UNIQUE INDEX image_name_user ON images(file_name, user_email);
         """
