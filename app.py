@@ -1,4 +1,3 @@
-import base64
 import os
 
 from flask import Flask, request, send_file, jsonify, make_response
@@ -9,6 +8,7 @@ from flask_cors import cross_origin
 import middleware as mw
 import image_manipulation as imman
 import db
+import helpers
 
 app = Flask(__name__)
 
@@ -17,26 +17,18 @@ app.config['DEBUG'] = True
 @app.route("/get-all-images", methods=["GET"])
 def get_all_images():
     image_list = db.get_images_for_list()
-    # TODO: still need to figure out how to get the image tiles to display, keep this in until that is either figured out or the effort is abandoned
-    for image in image_list:
-        file_location = os.path.join(imman.STORAGE_DIRECTORY, image['fileName'])
-        with open(file_location, "rb") as image_file:
-            # encoded_string = base64.b64encode(image_file.read())
-            image['fileData'] = base64.b64encode(image_file.read()).decode()
+    image_list = helpers.append_file_data_to_request_objects(image_list)
     return mw.add_cors_response_headers(jsonify(image_list))
 
 @app.route("/get-my-image-data/<user_email>", methods=["GET"])
 def get_my_image_data(user_email):
-    print('hits get_my_image_data')
-    # TODO: replace this potemkin village authorization pattern
+    """
+    Gets the list of all images for the user's email sent up
+    """
     if user_email is None:
         return mw.handle_response(401)
     image_list = db.get_images_for_list(user_email)
-    for image in image_list:
-        file_location = os.path.join(imman.STORAGE_DIRECTORY, image['fileName'])
-        with open(file_location, "rb") as image_file:
-            # encoded_string = base64.b64encode(image_file.read())
-            image['fileData'] = base64.b64encode(image_file.read()).decode()
+    image_list = helpers.append_file_data_to_request_objects(image_list)
     return mw.add_cors_response_headers(jsonify(image_list))
 
 
@@ -49,7 +41,7 @@ def get_image(image_id):
     image_id = int(image_id)
     display_name, image_creator, file_name = db.get_image_by_id(image_id)
     file_location = os.path.join(imman.STORAGE_DIRECTORY, file_name)
-    
+
     response = send_file(file_location, mimetype='image/png')
     response.headers.add("Access-Control-Expose-Headers", "image_name,image_creator")
     response.headers['image_creator'] = image_creator
@@ -77,8 +69,6 @@ def upload_image():
         return mw.handle_response(406, False)
     file_location, file_name = imman.add_effects_to_image(file, effects, email, input_filename)
 
-
-
     if os.path.exists(file_location) is True:
         display_name = file_name if input_filename is None else input_filename
         image_id = db.insert_image(file_name, email, display_name)
@@ -100,7 +90,6 @@ def delete_my_image(image_id):
     """
     image_id = int(image_id)
     print(image_id)
-    # TODO: this is where we're going to need to check for login to make sure that the user is the right one.
     file_name = db.delete_image(image_id)
     if file_name is False:
         return mw.handle_response(500, False)
@@ -121,9 +110,12 @@ def report_image(image_id):
         return mw.handle_response(500)
     return mw.add_cors_response_headers()
 
-
+# Code from the auth0 setup guide
 @app.errorhandler(mw.AuthError)
 def handle_auth_error(ex):
+    """
+    Handles authorization errors
+    """
     response = jsonify(ex.error)
     response.status_code = ex.status_code
     return response

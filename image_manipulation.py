@@ -1,24 +1,19 @@
 import os
-from datetime import date
-
 import numpy as np
 from PIL import Image, ImageDraw
 import cv2
-
-import middleware
 
 STORAGE_DIRECTORY = 'user-images'
 
 # The nexus method which will apply all desired effects to the image
 def add_effects_to_image(file, effects, username, input_filename=None):
     """
-    A few improvements
-    TODO: maybe make the effect list indexed, to allow the user to determine the order in which they're applied?
-    TODO: if haar and dnn are both run, will produce some weird overlap. Should probably (at least with eyes) make these mutually exclusive 
+    A few improvements would include
+    - make the effect list indexed, to allow the user to determine the order in which they're applied?
+    - Allow users to upload custom effects
     """
-    # print(effects)
     file_path, file_name, pil_image, np_image = add_effect_setup_and_data(file, effects, username, input_filename)
-    
+
     if 'haar_sparkle' or 'haar_googly' in effects:
         sparkly = 'haar_sparkle' in effects
         googly = 'haar_googly' in effects
@@ -31,21 +26,13 @@ def add_effects_to_image(file, effects, username, input_filename=None):
         pil_image, np_image = make_image_circular(pil_image.convert("RGB"))
 
     pil_image.save(file_path)
-    # Image.fromarray(changed_image).save(file_path)
     return file_path, file_name
 
-def handle_directory_for_day():
-    today = str(date.today())
-    if os.path.exists(today) is False:
-        try:
-            os.makedirs(today)
-        except Exception as exception:
-            print(f'error creating directory {today}: {exception}')
-            return False
-    return today
-
-# Performs the initial setup of directories for storing images and returns the different representations needed to add the effects
 def add_effect_setup_and_data(file, effects, username, image_name=None):
+    """
+    Performs the initial setup of directories for storing images and returns the different 
+    representations needed to add the effects
+    """
     if image_name is None:
         image_name = file.filename.split('.')[0]
     effect_list = '-'.join(effects)
@@ -59,22 +46,25 @@ def add_effect_setup_and_data(file, effects, username, image_name=None):
     return file_path, file_name, pil_image, np_image
 
 def handle_facial_recognition_dnn(np_image, sparkly_face=False, anime_eyes=False):
-    print('dnn')
+    """
+    Uses openCV's Dynamic Neural Net (DNN) with an established set of weights to locate faces,
+    Then apply the selected effects to those faces.
+  
+    If no faces are located, it will behave appropriately
+    """
     model_file = "res10_300x300_ssd_iter_140000.caffemodel"
     config_file = "deploy.prototxt.txt"
     net = cv2.dnn.readNetFromCaffe(config_file, model_file)
     img = cv2.cvtColor(np_image, cv2.COLOR_RGB2BGR)
     height, width = img.shape[:2]
     blob = cv2.dnn.blobFromImage(
-        cv2.resize(img, (300, 300)), 
+        cv2.resize(img, (300, 300)),
         1.0,
-        (300, 300), 
+        (300, 300),
         (104.0, 117.0, 123.0)
     )
     net.setInput(blob)
-    faces = net.forward()
-    #to draw faces on image
-    
+    faces = net.forward() 
     # A boolean flag to direct us if there are no faces present in the image
     no_faces_in_image = True
     image = Image.fromarray(np_image)
@@ -109,14 +99,12 @@ def handle_facial_recognition_haar(np_image, sparkly_face=False, anime_eyes=Fals
     I implemented haar first, then found from my research that haar is outdated and I'd be better suited using DNN, That said, I'm pretty loathe to take out
     more or less good code, so I'm calling the methods which use haar 'less accurate' on the front and calling it a day
     """
-    # print('haar')
     casc_path = 'haarcascade_frontalface_default.xml'
     face_cascade = cv2.CascadeClassifier(casc_path)
     img = cv2.cvtColor(np_image, cv2.COLOR_RGB2BGR)
     gray = cv2.cvtColor(img, cv2.COLOR_BGR2GRAY)
     # Detect faces in the image
-
-    # TODO: one potential improvement here would be to iterate on scale factors. Could have the knock on of doubling (to n) up on faces though, An interesting problem, but probably not worth dealing with at the moment
+    # one potential improvement here would be to iterate on scale factors. Could have the knock on of doubling (to n) up on faces though, An interesting problem, but probably not worth dealing with at the moment
     faces = face_cascade.detectMultiScale(
         gray,
         scaleFactor=1.3,
@@ -140,26 +128,30 @@ def handle_facial_recognition_haar(np_image, sparkly_face=False, anime_eyes=Fals
             image.paste(googly_face, (x, y))
 
     pil_image = image.convert("RGBA")
-    # pil_image.show()
     return pil_image, np.array(pil_image)
 
 def perform_alpha_composite(layer1, file):
+    """
+    The alpha composite method transposes the passed file on top of the passed layer
+    """
     layer2 = Image.open(file).resize(layer1.size)
-    # layer2.show()
-    # print(f'layer 1 size: {layer1.size}, layer 2 size: {layer2.size}')
     final2 = Image.new("RGBA", layer1.size)
     final2 = Image.alpha_composite(final2, layer1)
-    # final2.show()
-    # print(f'final2 size: {final2.size}, layer 2 size: {layer2.size} final2 mode: {final2.mode}, layer 2 mode: {layer2.mode}')
     final2 = Image.alpha_composite(final2, layer2)
     return final2
 
 def add_sparkles_to_whole_image(np_image):
+    """
+    Applies the sparkle effect to an entire image
+    """
     layer1 = Image.fromarray(np_image).convert("RGBA")
     pil_image = perform_alpha_composite(layer1, "effects/sparkles.png")
     return pil_image, np.array(pil_image)
 
 def make_image_circular(pil_image):
+    """
+    Crops an image to be circular
+    """
     np_image = np.array(pil_image)
     height, width = pil_image.size
 

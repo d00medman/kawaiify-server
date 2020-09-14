@@ -78,7 +78,8 @@ def get_images_for_list(user_email=None):
             'id': row[0],
             'fileName': row[1],
             'displayName': row[2],
-            'creatorEmail': row[3]
+            'creatorEmail': row[3],
+            'createdAt': row[4]
         }
 
     try:
@@ -89,7 +90,8 @@ def get_images_for_list(user_email=None):
                 id,
                 file_name,
                 display_name,
-                user_email
+                user_email,
+                created_at
             FROM images
             WHERE is_reported IS FALSE;
             """
@@ -100,7 +102,8 @@ def get_images_for_list(user_email=None):
                 id,
                 file_name,
                 display_name,
-                user_email 
+                user_email,
+                created_at
             FROM images
             WHERE user_email=%s
             AND is_reported IS FALSE;
@@ -158,7 +161,8 @@ def get_image_by_id(image_id):
 
 def delete_image(image_id):
     """
-    Deletes information in the database for a single file, then returns the file's name so the file itself can be deleted
+    Deletes information in the database for a single file, then returns the file's name
+    so the file itself can be deleted
     """
     sql = "DELETE FROM images WHERE id = %s RETURNING file_name;"
     try:
