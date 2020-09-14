@@ -12,7 +12,6 @@ def create_tables():
             display_name VARCHAR(255) NOT NULL,
             file_name VARCHAR(255) NOT NULL,
             created_at TIMESTAMP DEFAULT NOW(),
-            creator_user_id INTEGER REFERENCES users(id),
             user_email VARCHAR(255),
             is_reported BOOLEAN DEFAULT FALSE
         );
