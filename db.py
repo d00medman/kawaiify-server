@@ -73,13 +73,23 @@ def get_images_for_list(user_email=None):
     Recovers the image data needed to hydrate the list view. If the user_email param is passed, 
     will only get the ones for the passed user
     """
+    def create_user_poco(row):
+        return {
+            'id': row[0],
+            'fileName': row[1],
+            'displayName': row[2],
+            'creatorEmail': row[3]
+        }
+
     try:
         conn, cur = get_db_connection()
         if user_email is None:
             sql = """
             SELECT
                 id,
-                display_name
+                file_name,
+                display_name,
+                user_email
             FROM images
             WHERE is_reported IS FALSE;
             """
@@ -88,14 +98,16 @@ def get_images_for_list(user_email=None):
             sql = """
             SELECT 
                 id,
-                display_name 
+                file_name,
+                display_name,
+                user_email 
             FROM images
             WHERE user_email=%s
             AND is_reported IS FALSE;
             """
             cur.execute(sql, (user_email,))
         rows = cur.fetchall()
-        image_list = [{'id': row[0], 'fileName': row[1]} for row in rows]
+        image_list = [create_user_poco(row) for row in rows]
         cur.close()
         return image_list
     except (Exception, psycopg2.DatabaseError) as error:
@@ -110,12 +122,14 @@ def get_image_by_id(image_id):
     """
     Gets data needed for the proper display of a single file
     """
+    display_name = None
     file_name = None
     file_creator = None
     sql = """
     SELECT
         display_name,
-        user_email
+        user_email,
+        file_name
     FROM images
     WHERE id = %s
     AND is_reported IS FALSE;
@@ -127,12 +141,14 @@ def get_image_by_id(image_id):
         # print("The number of images: ", cur.rowcount)
         for row in rows:
             if file_name is None:
-                file_name = row[0]
+                display_name = row[0]
             if file_creator is None:
                 file_creator = row[1]
+            if file_name is None:
+                file_name = row[2]
             # print(row)
         cur.close()
-        return file_name, file_creator
+        return display_name, file_creator, file_name
     except (Exception, psycopg2.DatabaseError) as error:
         print(f'Error in get_image_by_id: {error}')
         return False

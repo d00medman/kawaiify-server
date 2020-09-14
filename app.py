@@ -18,11 +18,11 @@ app.config['DEBUG'] = True
 def get_all_images():
     image_list = db.get_images_for_list()
     # TODO: still need to figure out how to get the image tiles to display, keep this in until that is either figured out or the effort is abandoned
-    # for image in image_list:
-    #     file_location = os.path.join(imman.STORAGE_DIRECTORY, image['fileName'])
-    #     with open(file_location, "rb") as image_file:
-    #         # encoded_string = base64.b64encode(image_file.read())
-    #         image['fileData'] = base64.b64encode(image_file.read()).decode()
+    for image in image_list:
+        file_location = os.path.join(imman.STORAGE_DIRECTORY, image['fileName'])
+        with open(file_location, "rb") as image_file:
+            # encoded_string = base64.b64encode(image_file.read())
+            image['fileData'] = base64.b64encode(image_file.read()).decode()
     return mw.add_cors_response_headers(jsonify(image_list))
 
 @app.route("/get-my-image-data/<user_email>", methods=["GET"])
@@ -32,11 +32,11 @@ def get_my_image_data(user_email):
     if user_email is None:
         return mw.handle_response(401)
     image_list = db.get_images_for_list(user_email)
-    # for image in image_list:
-    #     file_location = os.path.join(imman.STORAGE_DIRECTORY, image['fileName'])
-    #     with open(file_location, "rb") as image_file:
-    #         # encoded_string = base64.b64encode(image_file.read())
-    #         image['fileData'] = base64.b64encode(image_file.read()).decode()
+    for image in image_list:
+        file_location = os.path.join(imman.STORAGE_DIRECTORY, image['fileName'])
+        with open(file_location, "rb") as image_file:
+            # encoded_string = base64.b64encode(image_file.read())
+            image['fileData'] = base64.b64encode(image_file.read()).decode()
     return mw.add_cors_response_headers(jsonify(image_list))
 
 
@@ -47,13 +47,13 @@ def get_image(image_id):
     """
     # print(f'image id in get_image {image_id}')
     image_id = int(image_id)
-    file_name, image_creator = db.get_image_by_id(image_id)
+    display_name, image_creator, file_name = db.get_image_by_id(image_id)
     file_location = os.path.join(imman.STORAGE_DIRECTORY, file_name)
     
     response = send_file(file_location, mimetype='image/png')
     response.headers.add("Access-Control-Expose-Headers", "image_name,image_creator")
     response.headers['image_creator'] = image_creator
-    response.headers['image_name'] = file_name
+    response.headers['image_name'] = display_name
     return mw.add_cors_response_headers(response)
 
 
