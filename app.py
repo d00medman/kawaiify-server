@@ -1,9 +1,6 @@
 import os
-
 from flask import Flask, request, send_file, jsonify, make_response
-# from datetime import datetime, date
 from flask_cors import cross_origin
-
 # imports from files in this project
 import middleware as mw
 import image_manipulation as imman
@@ -12,7 +9,7 @@ import helpers
 
 app = Flask(__name__)
 
-app.config['DEBUG'] = True
+# app.config['DEBUG'] = True
 
 @app.route("/get-all-images", methods=["GET"])
 def get_all_images():
