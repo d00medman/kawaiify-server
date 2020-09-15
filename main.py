@@ -13,8 +13,10 @@ app = Flask(__name__)
 
 @app.route("/get-all-images", methods=["GET"])
 def get_all_images():
+    """
+    Gets data for all images in DB
+    """
     image_list = db.get_images_for_list()
-    image_list = helpers.append_file_data_to_request_objects(image_list)
     return mw.add_cors_response_headers(jsonify(image_list))
 
 @app.route("/get-my-image-data/<user_email>", methods=["GET"])
@@ -25,7 +27,6 @@ def get_my_image_data(user_email):
     if user_email is None:
         return mw.handle_response(401)
     image_list = db.get_images_for_list(user_email)
-    image_list = helpers.append_file_data_to_request_objects(image_list)
     return mw.add_cors_response_headers(jsonify(image_list))
 
 
@@ -34,16 +35,8 @@ def get_image(image_id):
     """
     Recover a single image and its relevant data
     """
-    # print(f'image id in get_image {image_id}')
-    image_id = int(image_id)
-    display_name, image_creator, file_name = db.get_image_by_id(image_id)
-    file_location = os.path.join(imman.STORAGE_DIRECTORY, file_name)
-
-    response = send_file(file_location, mimetype='image/png')
-    response.headers.add("Access-Control-Expose-Headers", "image_name,image_creator")
-    response.headers['image_creator'] = image_creator
-    response.headers['image_name'] = display_name
-    return mw.add_cors_response_headers(response)
+    image_data = db.get_image_by_id(int(image_id))
+    return mw.add_cors_response_headers(jsonify(image_data))
 
 
 # Preview and upload are essentially the same for the moment, need to clarify this terminology
@@ -57,7 +50,7 @@ def upload_image():
     """
     email = request.form['email']
     if email is None:
-        return mw.handle_response(401, False)
+        return mw.handle_response(406, False)
     file = request.files['image']
     input_filename = None if request.form['file_name'] == '' else request.form['file_name']
     print(f'input filename: {input_filename}')
@@ -66,16 +59,13 @@ def upload_image():
         return mw.handle_response(406, False)
     file_location, file_name = imman.add_effects_to_image(file, effects, email, input_filename)
 
-    if os.path.exists(file_location) is True:
-        display_name = file_name if input_filename is None else input_filename
-        image_id = db.insert_image(file_name, email, display_name)
-        if image_id is False:
-            return mw.handle_response(500, False)
+    display_name = file_name if input_filename is None else input_filename
+    image_id = db.insert_image(file_name, email, display_name, file_location)
+    if image_id is False:
+        return mw.handle_response(500, False)
 
-    response = send_file(file_location, mimetype='image/png')
-    response.headers.add("Access-Control-Expose-Headers", "image_id")
-    response.headers['image_id'] = image_id
-    return response
+    response_data = {'id': image_id, 'cloudUrl': file_location}
+    return jsonify(response_data)
 
 @app.route("/delete-my-image-data/<image_id>", methods=["GET"])
 @cross_origin(headers=["Content-Type", "Authorization"])
@@ -90,8 +80,7 @@ def delete_my_image(image_id):
     file_name = db.delete_image(image_id)
     if file_name is False:
         return mw.handle_response(500, False)
-    file_location = os.path.join(imman.STORAGE_DIRECTORY, file_name)
-    os.remove(file_location)
+    helpers.delete_image_from_gcloud_bucket(file_name)
     return make_response()
 
 @app.route("/report-image/<image_id>", methods=["GET"])

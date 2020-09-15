@@ -1,14 +1,31 @@
-import base64
-import os
+import io
+from google.cloud import storage
 
 import image_manipulation as imman
 
-def append_file_data_to_request_objects(image_list):
+def get_blob(file_name):
     """
-    Appends file binary data to the object which will be sent to the client to display to users
+    Gets the blob for the file passed in gcloud
     """
-    for image in image_list:
-        file_location = os.path.join(imman.STORAGE_DIRECTORY, image['fileName'])
-        with open(file_location, "rb") as image_file:
-            image['fileData'] = base64.b64encode(image_file.read()).decode()
-    return image_list
+    gcs = storage.Client()
+    bucket = gcs.get_bucket(imman.CLOUD_STORAGE_BUCKET)
+    return bucket.blob(file_name)
+
+def save_image_to_gcloud_bucket(pil_image, file_name):
+    """
+    Converts a PIL image into a buffer, then uses this buffer to save the image to gcloud
+    """
+    buf = io.BytesIO()
+    pil_image.save(buf, format='PNG')
+    byte_im = buf.getvalue()
+
+    blob = get_blob(file_name)
+    blob.upload_from_string(byte_im, content_type='image/png')
+    return blob.public_url
+
+def delete_image_from_gcloud_bucket(file_name):
+    """
+    Exactly what it says
+    """
+    blob = get_blob(file_name)
+    blob.delete()

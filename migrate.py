@@ -10,7 +10,8 @@ def create_tables():
         CREATE TABLE images (
             id SERIAL PRIMARY KEY,
             display_name VARCHAR(255) NOT NULL,
-            file_name VARCHAR(255) NOT NULL,
+            file_name VARCHAR(500) NOT NULL,
+            cloud_url VARCHAR(500) NOT NULL,
             created_at TIMESTAMP DEFAULT NOW(),
             user_email VARCHAR(255),
             is_reported BOOLEAN DEFAULT FALSE

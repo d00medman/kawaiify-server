@@ -1,25 +1,5 @@
-from configparser import ConfigParser
+import os
 import psycopg2
-
-def config(filename='database.ini', section='postgresql'):
-    """
-    recovers configuration data for the DB
-    """
-    # create a parser
-    parser = ConfigParser()
-    # read config file
-    parser.read(filename)
-
-    # get section, default to postgresql
-    db = {}
-    if parser.has_section(section):
-        params = parser.items(section)
-        for param in params:
-            db[param[0]] = param[1]
-    else:
-        raise Exception('Section {0} not found in the {1} file'.format(section, filename))
-
-    return db
 
 def get_db_connection():
     """
@@ -27,25 +7,29 @@ def get_db_connection():
     """
     conn = None
     try:
-        # read connection parameters
-        params = config()
-
         # connect to the PostgreSQL server
         print('Connecting to the PostgreSQL database...')
-        conn = psycopg2.connect(**params)
+        conn = psycopg2.connect(
+            dbname=os.getenv('DB_NAME', 'steg'),
+            user=os.getenv('DB_USER', 'postgres'),
+            password=os.getenv('DB_PASSWORD', ''),
+            host=os.getenv('DB_HOST', 'localhost')
+        )
         cur = conn.cursor()
     except (Exception, psycopg2.DatabaseError) as error:
-        print(error)
+        print(f'Error in recovering DB connection: {error}')
     return conn, cur
 
-def insert_image(file_name, user_email, display_name):
+def insert_image(file_name, user_email, display_name, cloud_url):
     """ insert a new image path into the images table """
     sql = """
     INSERT INTO images (
         file_name,
         user_email,
-        display_name
+        display_name,
+        cloud_url
     ) VALUES (
+        %s,
         %s,
         %s,
         %s
@@ -56,7 +40,7 @@ def insert_image(file_name, user_email, display_name):
     try:
         conn, cur = get_db_connection()
         # execute the INSERT statement
-        cur.execute(sql, (file_name, user_email, display_name,))
+        cur.execute(sql, (file_name, user_email, display_name, cloud_url))
         image_id = cur.fetchone()[0]
         conn.commit()
         cur.close()
@@ -76,19 +60,19 @@ def get_images_for_list(user_email=None):
     def create_user_poco(row):
         return {
             'id': row[0],
-            'fileName': row[1],
+            'cloudUrl': row[1],
             'displayName': row[2],
             'creatorEmail': row[3],
             'createdAt': row[4]
         }
-
+    conn = None
     try:
         conn, cur = get_db_connection()
         if user_email is None:
             sql = """
             SELECT
                 id,
-                file_name,
+                cloud_url,
                 display_name,
                 user_email,
                 created_at
@@ -100,7 +84,7 @@ def get_images_for_list(user_email=None):
             sql = """
             SELECT 
                 id,
-                file_name,
+                cloud_url,
                 display_name,
                 user_email,
                 created_at
@@ -125,33 +109,27 @@ def get_image_by_id(image_id):
     """
     Gets data needed for the proper display of a single file
     """
-    display_name = None
-    file_name = None
-    file_creator = None
+    def single_image_poco(row):
+        return {
+            'fileName': row[0],
+            'creatorEmail': row[1],
+            'cloudUrl': row[2]
+        }
     sql = """
     SELECT
         display_name,
         user_email,
-        file_name
+        cloud_url
     FROM images
     WHERE id = %s
     AND is_reported IS FALSE;
     """
+    conn = None
     try:
         conn, cur = get_db_connection()
         cur.execute(sql, (image_id,))
-        rows = cur.fetchall()
-        # print("The number of images: ", cur.rowcount)
-        for row in rows:
-            if file_name is None:
-                display_name = row[0]
-            if file_creator is None:
-                file_creator = row[1]
-            if file_name is None:
-                file_name = row[2]
-            # print(row)
-        cur.close()
-        return display_name, file_creator, file_name
+        row = cur.fetchall()[0]
+        return single_image_poco(row)
     except (Exception, psycopg2.DatabaseError) as error:
         print(f'Error in get_image_by_id: {error}')
         return False
@@ -165,6 +143,7 @@ def delete_image(image_id):
     so the file itself can be deleted
     """
     sql = "DELETE FROM images WHERE id = %s RETURNING file_name;"
+    conn = None
     try:
         conn, cur = get_db_connection()
         cur.execute(sql, (image_id,))
@@ -188,6 +167,7 @@ def report_image(image_id):
     SET is_reported = TRUE
     WHERE id = %s
     """
+    conn = None
     try:
         conn, cur = get_db_connection()
         cur.execute(sql, (image_id,))

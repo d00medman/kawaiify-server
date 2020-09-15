@@ -1,9 +1,15 @@
+import io
 import os
 import numpy as np
 from PIL import Image, ImageDraw
 import cv2
 
+import helpers
+
 STORAGE_DIRECTORY = 'user-images'
+CLOUD_STORAGE_BUCKET = 'steg-interview-project-imstore'
+
+
 
 # The nexus method which will apply all desired effects to the image
 def add_effects_to_image(file, effects, username, input_filename=None):
@@ -12,7 +18,7 @@ def add_effects_to_image(file, effects, username, input_filename=None):
     - make the effect list indexed, to allow the user to determine the order in which they're applied?
     - Allow users to upload custom effects
     """
-    file_path, file_name, pil_image, np_image = add_effect_setup_and_data(file, effects, username, input_filename)
+    file_name, pil_image, np_image = add_effect_setup_and_data(file, effects, username, input_filename)
 
     if 'haar_sparkle' or 'haar_googly' in effects:
         sparkly = 'haar_sparkle' in effects
@@ -25,8 +31,9 @@ def add_effects_to_image(file, effects, username, input_filename=None):
     if 'circle' in effects:
         pil_image, np_image = make_image_circular(pil_image.convert("RGB"))
 
-    pil_image.save(file_path)
-    return file_path, file_name
+    cloud_url = helpers.save_image_to_gcloud_bucket(pil_image, file_name)
+    # pil_image.save(file_path)
+    return cloud_url, file_name
 
 def add_effect_setup_and_data(file, effects, username, image_name=None):
     """
@@ -35,15 +42,17 @@ def add_effect_setup_and_data(file, effects, username, image_name=None):
     """
     if image_name is None:
         image_name = file.filename.split('.')[0]
+    else:
+        image_name = image_name.replace(' ', '-')
     effect_list = '-'.join(effects)
     file_name = f'{image_name}_{effect_list}_{username}.png'
-    file_path = os.path.join(STORAGE_DIRECTORY, file_name)
+    # file_path = os.path.join(STORAGE_DIRECTORY, file_name)
 
     # PIL: Python Imaging Library, the library which actually changes the file passed in
     pil_image = Image.open(file).convert("RGB")
     # NP: numpy, a representation which acts as a go-between for PIL and OpenCV
     np_image = np.array(pil_image)
-    return file_path, file_name, pil_image, np_image
+    return file_name, pil_image, np_image
 
 def handle_facial_recognition_dnn(np_image, sparkly_face=False, anime_eyes=False):
     """

@@ -29,14 +29,14 @@ def add_cors_response_headers(response=None):
 def handle_response(code, add_cors=True):
     response = make_response()
     if code == 401:
-        response.status = status.HTTP_401_UNAUTHORIZED
+        response.status_code = status.HTTP_401_UNAUTHORIZED
     elif code == 406:
-        response.status = status.HTTP_406_NOT_ACCEPTABLE
+        response.status_code = status.HTTP_406_NOT_ACCEPTABLE
     elif code == 500:
-        response.status = status.HTTP_500_INTERNAL_SERVER_ERROR
+        response.status_code = status.HTTP_500_INTERNAL_SERVER_ERROR
     elif code == 502:
-        response.status = status.HTTP_502_BAD_GATEWAY
-    response.status_code = code
+        response.status_code = status.HTTP_502_BAD_GATEWAY
+    response.status = code
     return add_cors_response_headers(response) if add_cors else response
 
 # Code for auth0 checks
